@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UCSD Parking Availability Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            padding: 30px 40px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .control-group {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .control-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            font-size: 1em;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .control-group select:hover {
+            border-color: #667eea;
+        }
+        
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .stats {
+            padding: 20px 40px;
+            background: #fff3cd;
+            border-bottom: 1px solid #ffeeba;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .chart-container {
+            padding: 40px;
+            min-height: 600px;
+        }
+        
+        #chart {
+            width: 100%;
+            height: 550px;
+        }
+        
+        .info-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        
+        .no-data h3 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚗 UCSD Parking Availability Analysis</h1>
+            <p>Fall 2025 Parking Data Visualization Dashboard</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="locationSelect">📍 Select Parking Lot</label>
+                <select id="locationSelect">
+                    <option value="">-- Please select a parking lot --</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="spaceTypeSelect">🎫 Select Space Type</label>
+                <select id="spaceTypeSelect">
+                    <option value="">-- Please select a space type --</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-value" id="totalDates">-</div>
+                <div class="stat-label">Number of Days</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="avgSpaces">-</div>
+                <div class="stat-label">Average Available Spaces</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="peakTime">-</div>
+                <div class="stat-label">Most Congested Time</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <div id="chart"></div>
+            <div id="noData" class="no-data" style="display: none;">
+                <h3>📊 No Data</h3>
+                <p>Please select a parking lot and a space type to view data</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let parkingData = {};
+        let allLocations = new Set();
+        let allSpaceTypes = new Set();
+        
+        // Load data
+        fetch('parking_data.json')
+            .then(response => response.json())
+            .then(data => {
+                parkingData = data;
+                initializeSelectors();
+            })
+            .catch(error => {
+                console.error('Failed to load data:', error);
+                document.getElementById('noData').innerHTML = '<h3>❌ Failed to load data</h3><p>Please ensure parking_data.json exists</p>';
+                document.getElementById('noData').style.display = 'block';
+            });
+        
+        function initializeSelectors() {
+            // Collect all unique locations and space types
+            Object.values(parkingData).forEach(item => {
+                allLocations.add(item.location);
+                allSpaceTypes.add(item.space_type);
+            });
+            
+            // Populate dropdowns initially
+            populateLocationSelect();
+            populateSpaceTypeSelect();
+            
+            // Event listeners
+            document.getElementById('locationSelect').addEventListener('change', onLocationChange);
+            document.getElementById('spaceTypeSelect').addEventListener('change', onSpaceTypeChange);
+            
+            // Show initial hint
+            document.getElementById('noData').style.display = 'block';
+        }
+        
+        function populateLocationSelect(filterSpaceType = null) {
+            const locationSelect = document.getElementById('locationSelect');
+            const currentValue = locationSelect.value;
+            
+            // Clear options (keep the placeholder)
+            locationSelect.innerHTML = '<option value="">-- Please select a parking lot --</option>';
+            
+            // Build available location list
+            let availableLocations = new Set();
+            if (filterSpaceType) {
+                // Only show lots that have this space type
+                Object.values(parkingData).forEach(item => {
+                    if (item.space_type === filterSpaceType) {
+                        availableLocations.add(item.location);
+                    }
+                });
+            } else {
+                availableLocations = new Set(allLocations);
+            }
+            
+            // Populate options
+            Array.from(availableLocations).sort().forEach(location => {
+                const option = document.createElement('option');
+                option.value = location;
+                option.textContent = location;
+                locationSelect.appendChild(option);
+            });
+            
+            // Try to restore previous selection if still valid
+            if (currentValue && availableLocations.has(currentValue)) {
+                locationSelect.value = currentValue;
+            }
+        }
+        
+        function populateSpaceTypeSelect(filterLocation = null) {
+            const spaceTypeSelect = document.getElementById('spaceTypeSelect');
+            const currentValue = spaceTypeSelect.value;
+            
+            // Clear options (keep the placeholder)
+            spaceTypeSelect.innerHTML = '<option value="">-- Please select a space type --</option>';
+            
+            // Build available space type list
+            let availableSpaceTypes = new Set();
+            if (filterLocation) {
+                // Only show space types available in this lot
+                Object.values(parkingData).forEach(item => {
+                    if (item.location === filterLocation) {
+                        availableSpaceTypes.add(item.space_type);
+                    }
+                });
+            } else {
+                availableSpaceTypes = new Set(allSpaceTypes);
+            }
+            
+            // Fixed order for options
+            const spaceTypeOrder = ['A', 'B', 'D', 'S', 'SR', 'Visitor'];
+            spaceTypeOrder.forEach(type => {
+                if (availableSpaceTypes.has(type)) {
+                    const option = document.createElement('option');
+                    option.value = type;
+                    option.textContent = type;
+                    spaceTypeSelect.appendChild(option);
+                }
+            });
+            
+            // Try to restore previous selection if still valid
+            if (currentValue && availableSpaceTypes.has(currentValue)) {
+                spaceTypeSelect.value = currentValue;
+            }
+        }
+        
+        function onLocationChange() {
+            const location = document.getElementById('locationSelect').value;
+            
+            if (location) {
+                // Update space-type dropdown to only those in the chosen lot
+                populateSpaceTypeSelect(location);
+            } else {
+                // Reset to all space types
+                populateSpaceTypeSelect(null);
+            }
+            
+            updateChart();
+        }
+        
+        function onSpaceTypeChange() {
+            const spaceType = document.getElementById('spaceTypeSelect').value;
+            
+            if (spaceType) {
+                // Update lot dropdown to only those with the chosen type
+                populateLocationSelect(spaceType);
+            } else {
+                // Reset to all lots
+                populateLocationSelect(null);
+            }
+            
+            updateChart();
+        }
+        
+        function updateChart() {
+            const location = document.getElementById('locationSelect').value;
+            const spaceType = document.getElementById('spaceTypeSelect').value;
+            
+            if (!location || !spaceType) {
+                document.getElementById('chart').innerHTML = '';
+                document.getElementById('noData').style.display = 'block';
+                document.getElementById('stats').style.display = 'none';
+                return;
+            }
+            
+            const key = `${location}_${spaceType}`;
+            const data = parkingData[key];
+            
+            if (!data) {
+                document.getElementById('chart').innerHTML = '';
+                document.getElementById('noData').innerHTML = '<h3>📊 No Data</h3><p>No available data for this lot and space type combination</p>';
+                document.getElementById('noData').style.display = 'block';
+                document.getElementById('stats').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('noData').style.display = 'none';
+            document.getElementById('stats').style.display = 'flex';
+            
+            // Create line chart (Plotly will skip nulls and connect gaps)
+            const traces = [
+                {
+                    x: data.dates,
+                    y: data['8:00 AM'],
+                    name: '8:00 AM',
+                    mode: 'lines+markers',
+                    line: { color: '#667eea', width: 3 },
+                    marker: { size: 8 },
+                    connectgaps: true  // connect gaps (skip nulls)
+                },
+                {
+                    x: data.dates,
+                    y: data['10:00 AM'],
+                    name: '10:00 AM',
+                    mode: 'lines+markers',
+                    line: { color: '#f093fb', width: 3 },
+                    marker: { size: 8 },
+                    connectgaps: true
+                },
+                {
+                    x: data.dates,
+                    y: data['12:00 PM'],
+                    name: '12:00 PM',
+                    mode: 'lines+markers',
+                    line: { color: '#4facfe', width: 3 },
+                    marker: { size: 8 },
+                    connectgaps: true
+                },
+                {
+                    x: data.dates,
+                    y: data['2:00 PM'],
+                    name: '2:00 PM',
+                    mode: 'lines+markers',
+                    line: { color: '#43e97b', width: 3 },
+                    marker: { size: 8 },
+                    connectgaps: true
+                }
+            ];
+            
+            const layout = {
+                title: {
+                    text: `${location} - ${spaceType} Availability Trend`,
+                    font: { size: 20, family: 'Arial, sans-serif', weight: 700 }
+                },
+                xaxis: {
+                    title: 'Date',
+                    type: 'date',
+                    tickformat: '%m-%d',
+                    tickangle: -45,
+                    tickfont: { size: 12 },
+                    dtick: 86400000  // 1 day (ms)
+                },
+                yaxis: {
+                    title: 'Available Spaces',
+                    tickfont: { size: 12 }
+                },
+                legend: {
+                    orientation: 'h',
+                    x: 0.5,
+                    xanchor: 'center',
+                    y: -0.2,
+                    font: { size: 13 }
+                },
+                hovermode: 'x unified',
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: 'white',
+                margin: { l: 60, r: 40, t: 80, b: 100 }
+            };
+            
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
+            
+            Plotly.newPlot('chart', traces, layout, config);
+            
+            // Update stats
+            updateStats(data);
+        }
+        
+        function updateStats(data) {
+            // Total days
+            document.getElementById('totalDates').textContent = data.dates.length;
+            
+            // Average available spaces across all time slots (filter out null/NaN)
+            const allValues = [
+                ...data['8:00 AM'].filter(v => v !== null && !isNaN(v)),
+                ...data['10:00 AM'].filter(v => v !== null && !isNaN(v)),
+                ...data['12:00 PM'].filter(v => v !== null && !isNaN(v)),
+                ...data['2:00 PM'].filter(v => v !== null && !isNaN(v))
+            ];
+            const avgSpaces = allValues.length > 0 
+                ? Math.round(allValues.reduce((a, b) => a + b, 0) / allValues.length)
+                : 0;
+            document.getElementById('avgSpaces').textContent = avgSpaces;
+            
+            // Most congested time (lowest average available spaces)
+            const timeAvgs = {
+                '8:00 AM': average(data['8:00 AM']),
+                '10:00 AM': average(data['10:00 AM']),
+                '12:00 PM': average(data['12:00 PM']),
+                '2:00 PM': average(data['2:00 PM'])
+            };
+            
+            const peakTime = Object.entries(timeAvgs)
+                .filter(([time, avg]) => avg > 0)  // drop times without data
+                .sort((a, b) => a[1] - b[1])[0];
+            
+            document.getElementById('peakTime').textContent = peakTime ? peakTime[0] : 'N/A';
+        }
+        
+        function average(arr) {
+            const validValues = arr.filter(v => v !== null && !isNaN(v));
+            return validValues.length > 0
+                ? validValues.reduce((a, b) => a + b, 0) / validValues.length
+                : 0;
+        }
+    </script>
+</body>
+</html>
