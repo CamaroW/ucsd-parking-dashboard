@@ -2,6 +2,8 @@
 
 An interactive visualization tool to explore parking availability trends across different lots and space types at multiple times of day.
 
+*Source: https://transportation.ucsd.edu/commute/permits/availability.html*
+
 ## ✨ Features
 
 - 📊 Interactive charts: four series for time slots (8 AM / 10 AM / 12 PM / 2 PM)
